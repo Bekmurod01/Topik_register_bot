@@ -70,6 +70,7 @@ PHONE_REQUEST_TEXT = "📲 Telefon raqamingizni tugma orqali yuboring."
 PHONE_OWN_CONTACT_TEXT = "❗ Iltimos, faqat o‘zingizning telefon raqamingizni yuboring."
 
 MENU_NEW_APPLICATION = "📌 Yangi ariza"
+MENU_ADMIN_CONTACT = "📞 Admin bilan bog‘lanish"
 
 NOT_PDF_TEXT = "❌ Iltimos, hujjatni faqat PDF formatda yuboring."
 START_TEXT_INSTEAD_OF_FILE = "📄 Iltimos, ro‘yxatdan o‘tish uchun hujjatlaringizni PDF formatda yuboring."
@@ -143,7 +144,10 @@ USER_PAYMENT_REJECTED_TEXT = (
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
-    keyboard = [[KeyboardButton(MENU_NEW_APPLICATION)]]
+    keyboard = [
+        [KeyboardButton(MENU_NEW_APPLICATION)],
+        [KeyboardButton(MENU_ADMIN_CONTACT)],
+    ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
@@ -577,11 +581,13 @@ def build_app() -> Application:
             ],
             WAITING_PDF: [
                 MessageHandler(filters.Regex(r"^📌 Yangi ariza$"), handle_new_application_menu),
+                MessageHandler(filters.Regex(r"^📞 Admin bilan bog‘lanish$"), handle_admin_contact_menu),
                 MessageHandler(filters.Document.ALL, handle_pdf),
                 MessageHandler((filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.VIDEO) & ~filters.COMMAND, handle_text_before_pdf),
             ],
             WAITING_PAYMENT: [
                 MessageHandler(filters.Regex(r"^📌 Yangi ariza$"), handle_new_application_menu),
+                MessageHandler(filters.Regex(r"^📞 Admin bilan bog‘lanish$"), handle_admin_contact_menu),
                 MessageHandler(filters.PHOTO, handle_payment_screenshot),
                 MessageHandler(filters.Document.IMAGE, handle_payment_screenshot),
                 MessageHandler(filters.ALL & ~filters.COMMAND, handle_waiting_payment_text),
