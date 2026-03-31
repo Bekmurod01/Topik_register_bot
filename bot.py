@@ -359,9 +359,11 @@ async def handle_new_application_menu(update: Update, context: ContextTypes.DEFA
     user_data["last_registration_approved"] = False
     user_data["awaiting_pdf_more"] = False
     user_data["uploaded_pdfs"] = []
+    user_data["applicant_name"] = ""
+    user_data["phone_number"] = ""
 
-    await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
-    return WAITING_PDF
+    await update.effective_message.reply_text(WELCOME_NAME_TEXT)
+    return WAITING_NAME
 
 
 async def handle_pdf_more_yes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
