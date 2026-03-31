@@ -26,7 +26,9 @@ ADMIN_PHONE = os.getenv("ADMIN_PHONE", "+998 XX XXX XX XX")
 ADMIN_TELEGRAM = os.getenv("ADMIN_TELEGRAM", "@admin_username")
 PAYMENT_REMINDER_MINUTES = int(os.getenv("PAYMENT_REMINDER_MINUTES", "120"))
 
+# Keep existing state IDs stable for persisted conversations.
 WAITING_PDF, WAITING_PAYMENT = range(2)
+WAITING_NAME, WAITING_PHONE = 2, 3
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -51,6 +53,26 @@ STEP_1_TEXT = (
     "• Faqat PDF format qabul qilinadi\n\n"
     "⬇️ Faylni shu yerga yuboring"
 )
+
+WELCOME_NAME_TEXT = (
+    "Assalomu alaykum! 🇰🇷 TOPIK ro‘yxatdan o‘tish botiga xush kelibsiz.\n\n"
+    "Davom etish uchun, iltimos, ismingizni kiriting."
+)
+
+ASK_PHONE_TEXT = "📱 Iltimos, telefon raqamingizni yuboring"
+PROFILE_SAVED_TEXT = (
+    "✅ Ma’lumotlaringiz qabul qilindi!\n\n"
+    "Endi ro‘yxatdan o‘tishni davom ettirishingiz mumkin."
+)
+
+NAME_INVALID_TEXT = "✍️ Iltimos, ismingizni matn ko‘rinishida kiriting."
+PHONE_REQUEST_TEXT = "📲 Telefon raqamingizni tugma orqali yuboring."
+PHONE_OWN_CONTACT_TEXT = "❗ Iltimos, faqat o‘zingizning telefon raqamingizni yuboring."
+
+MENU_NEW_APPLICATION = "📌 Yangi ariza"
+MENU_SEND_PDF = "📄 PDF yuborish"
+MENU_SEND_PAYMENT = "💳 To‘lov skrinshoti"
+MENU_ADMIN_CONTACT = "📞 Admin bilan bog‘lanish"
 
 NOT_PDF_TEXT = "❌ Iltimos, hujjatni faqat PDF formatda yuboring."
 START_TEXT_INSTEAD_OF_FILE = "📄 Iltimos, ro‘yxatdan o‘tish uchun hujjatlaringizni PDF formatda yuboring."
@@ -123,9 +145,17 @@ USER_PAYMENT_REJECTED_TEXT = (
 )
 
 
-def admin_contact_menu_keyboard() -> ReplyKeyboardMarkup:
-    keyboard = [[KeyboardButton("📞 Admin bilan bog‘lanish")]]
+def main_menu_keyboard() -> ReplyKeyboardMarkup:
+    keyboard = [
+        [KeyboardButton(MENU_NEW_APPLICATION), KeyboardButton(MENU_SEND_PDF)],
+        [KeyboardButton(MENU_SEND_PAYMENT), KeyboardButton(MENU_ADMIN_CONTACT)],
+    ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def phone_request_keyboard() -> ReplyKeyboardMarkup:
+    keyboard = [[KeyboardButton("📲 Raqamni yuborish", request_contact=True)]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
 def approval_button(user_id: int, stage: str) -> InlineKeyboardMarkup:
@@ -167,17 +197,62 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if user_data.get("submitted_pdf"):
         if user_data.get("payment_submitted"):
-            await update.effective_message.reply_text(PAYMENT_UNDER_REVIEW_TEXT, reply_markup=admin_contact_menu_keyboard())
+            await update.effective_message.reply_text(PAYMENT_UNDER_REVIEW_TEXT, reply_markup=main_menu_keyboard())
         else:
-            await update.effective_message.reply_text(ALREADY_SUBMITTED_TEXT, reply_markup=admin_contact_menu_keyboard())
+            await update.effective_message.reply_text(ALREADY_SUBMITTED_TEXT, reply_markup=main_menu_keyboard())
         return WAITING_PAYMENT
 
     user_data["submitted_pdf"] = False
     user_data["awaiting_payment"] = False
     user_data["payment_submitted"] = False
 
-    await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=admin_contact_menu_keyboard())
+    if not user_data.get("applicant_name") or not user_data.get("phone_number"):
+        await update.effective_message.reply_text(WELCOME_NAME_TEXT)
+        return WAITING_NAME
+
+    await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
     return WAITING_PDF
+
+
+async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    message = update.effective_message
+    if not message.text:
+        await message.reply_text(NAME_INVALID_TEXT)
+        return WAITING_NAME
+
+    context.user_data["applicant_name"] = message.text.strip()
+    await message.reply_text(ASK_PHONE_TEXT, reply_markup=phone_request_keyboard())
+    return WAITING_PHONE
+
+
+async def handle_phone_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    message = update.effective_message
+    contact = message.contact
+    user = update.effective_user
+
+    if not contact:
+        await message.reply_text(PHONE_REQUEST_TEXT, reply_markup=phone_request_keyboard())
+        return WAITING_PHONE
+
+    if contact.user_id and contact.user_id != user.id:
+        await message.reply_text(PHONE_OWN_CONTACT_TEXT, reply_markup=phone_request_keyboard())
+        return WAITING_PHONE
+
+    context.user_data["phone_number"] = contact.phone_number
+
+    await message.reply_text(PROFILE_SAVED_TEXT, reply_markup=main_menu_keyboard())
+    await message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
+    return WAITING_PDF
+
+
+async def handle_waiting_name_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.effective_message.reply_text(NAME_INVALID_TEXT)
+    return WAITING_NAME
+
+
+async def handle_waiting_phone_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.effective_message.reply_text(PHONE_REQUEST_TEXT, reply_markup=phone_request_keyboard())
+    return WAITING_PHONE
 
 
 async def chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -206,10 +281,12 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await message.reply_text(NOT_PDF_TEXT)
         return WAITING_PDF
 
-    applicant = user_mention_text(user)
+    applicant = context.user_data.get("applicant_name") or user_mention_text(user)
+    phone_number = context.user_data.get("phone_number", "Noma’lum")
     caption = (
         "📥 Yangi ro‘yxatdan o‘tish arizasi\n\n"
         f"👤 Foydalanuvchi: {applicant}\n"
+        f"📱 Telefon: {phone_number}\n"
         f"🆔 ID: {user.id}\n\n"
         "📄 Hujjat biriktirildi"
     )
@@ -245,23 +322,61 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_data["submitted_pdf"] = True
     user_data["awaiting_payment"] = True
 
-    await message.reply_text(CONFIRMATION_TEXT, reply_markup=admin_contact_menu_keyboard())
-    await message.reply_text(PAYMENT_TEXT)
+    await message.reply_text(CONFIRMATION_TEXT, reply_markup=main_menu_keyboard())
+    await message.reply_text(PAYMENT_TEXT, reply_markup=main_menu_keyboard())
 
     schedule_payment_reminder(update, context)
     return WAITING_PAYMENT
 
 
 async def handle_text_before_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.effective_message.reply_text(START_TEXT_INSTEAD_OF_FILE, reply_markup=admin_contact_menu_keyboard())
+    await update.effective_message.reply_text(START_TEXT_INSTEAD_OF_FILE, reply_markup=main_menu_keyboard())
     return WAITING_PDF
 
 
 async def handle_admin_contact_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.effective_message.reply_text(ADMIN_CONTACT_TEXT, reply_markup=admin_contact_menu_keyboard())
+    await update.effective_message.reply_text(ADMIN_CONTACT_TEXT, reply_markup=main_menu_keyboard())
     if context.user_data.get("submitted_pdf"):
         return WAITING_PAYMENT
     return WAITING_PDF
+
+
+async def handle_new_application_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_data = context.user_data
+    user_data["submitted_pdf"] = False
+    user_data["awaiting_payment"] = False
+    user_data["payment_submitted"] = False
+    user_data["last_registration_approved"] = False
+
+    await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
+    return WAITING_PDF
+
+
+async def handle_send_pdf_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_data = context.user_data
+    if user_data.get("submitted_pdf"):
+        if user_data.get("payment_submitted"):
+            await update.effective_message.reply_text(PAYMENT_UNDER_REVIEW_TEXT, reply_markup=main_menu_keyboard())
+        else:
+            await update.effective_message.reply_text(ALREADY_SUBMITTED_TEXT, reply_markup=main_menu_keyboard())
+        return WAITING_PAYMENT
+
+    await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
+    return WAITING_PDF
+
+
+async def handle_send_payment_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_data = context.user_data
+    if not user_data.get("submitted_pdf"):
+        await update.effective_message.reply_text(START_TEXT_INSTEAD_OF_FILE, reply_markup=main_menu_keyboard())
+        return WAITING_PDF
+
+    if user_data.get("payment_submitted"):
+        await update.effective_message.reply_text(PAYMENT_UNDER_REVIEW_TEXT, reply_markup=main_menu_keyboard())
+        return WAITING_PAYMENT
+
+    await update.effective_message.reply_text(PAYMENT_TEXT, reply_markup=main_menu_keyboard())
+    return WAITING_PAYMENT
 
 
 async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -273,10 +388,12 @@ async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAUL
         await message.reply_text(START_TEXT_INSTEAD_OF_FILE)
         return WAITING_PDF
 
-    applicant = user_mention_text(user)
+    applicant = context.user_data.get("applicant_name") or user_mention_text(user)
+    phone_number = context.user_data.get("phone_number", "Noma’lum")
     caption = (
         "💳 To‘lov skrinshoti\n\n"
         f"👤 Foydalanuvchi: {applicant}\n"
+        f"📱 Telefon: {phone_number}\n"
         f"🆔 ID: {user.id}\n\n"
         "📌 To‘lov tekshirish uchun yuborildi"
     )
@@ -343,12 +460,12 @@ async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAUL
     user_data["awaiting_payment"] = False
     user_data["payment_submitted"] = True
 
-    await message.reply_text(PAYMENT_RECEIVED_TEXT, reply_markup=admin_contact_menu_keyboard())
+    await message.reply_text(PAYMENT_RECEIVED_TEXT, reply_markup=main_menu_keyboard())
     return WAITING_PAYMENT
 
 
 async def handle_waiting_payment_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.effective_message.reply_text(PAYMENT_DELAY_TEXT, reply_markup=admin_contact_menu_keyboard())
+    await update.effective_message.reply_text(PAYMENT_DELAY_TEXT, reply_markup=main_menu_keyboard())
     return WAITING_PAYMENT
 
 
@@ -456,12 +573,26 @@ def build_app() -> Application:
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
+            WAITING_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name_input),
+                MessageHandler(filters.ALL & ~filters.COMMAND, handle_waiting_name_other),
+            ],
+            WAITING_PHONE: [
+                MessageHandler(filters.CONTACT, handle_phone_contact),
+                MessageHandler(filters.ALL & ~filters.COMMAND, handle_waiting_phone_other),
+            ],
             WAITING_PDF: [
+                MessageHandler(filters.Regex(r"^📌 Yangi ariza$"), handle_new_application_menu),
+                MessageHandler(filters.Regex(r"^📄 PDF yuborish$"), handle_send_pdf_menu),
+                MessageHandler(filters.Regex(r"^💳 To‘lov skrinshoti$"), handle_send_payment_menu),
                 MessageHandler(filters.Regex(r"^📞 Admin bilan bog‘lanish$"), handle_admin_contact_menu),
                 MessageHandler(filters.Document.ALL, handle_pdf),
                 MessageHandler((filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.VIDEO) & ~filters.COMMAND, handle_text_before_pdf),
             ],
             WAITING_PAYMENT: [
+                MessageHandler(filters.Regex(r"^📌 Yangi ariza$"), handle_new_application_menu),
+                MessageHandler(filters.Regex(r"^📄 PDF yuborish$"), handle_send_pdf_menu),
+                MessageHandler(filters.Regex(r"^💳 To‘lov skrinshoti$"), handle_send_payment_menu),
                 MessageHandler(filters.Regex(r"^📞 Admin bilan bog‘lanish$"), handle_admin_contact_menu),
                 MessageHandler(filters.PHOTO, handle_payment_screenshot),
                 MessageHandler(filters.Document.IMAGE, handle_payment_screenshot),
