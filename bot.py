@@ -29,6 +29,7 @@ PAYMENT_REMINDER_MINUTES = int(os.getenv("PAYMENT_REMINDER_MINUTES", "120"))
 # Keep existing state IDs stable for persisted conversations.
 WAITING_PDF, WAITING_PAYMENT = range(2)
 WAITING_NAME, WAITING_PHONE = 2, 3
+WAITING_PDF_CONFIRM = 4
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -46,12 +47,7 @@ def user_mention_text(user: Any) -> str:
 
 
 STEP_1_TEXT = (
-    "🇰🇷 Koreys tili (TOPIK) imtihoniga ro‘yxatdan o‘tish\n\n"
-    "Ro‘yxatdan o‘tishni boshlash uchun hujjatlaringizni PDF (elektron) formatda yuboring.\n\n"
-    "📄 Talablar:\n"
-    "• Hujjatlar aniq va o‘qiladigan bo‘lishi kerak\n"
-    "• Faqat PDF format qabul qilinadi\n\n"
-    "⬇️ Faylni shu yerga yuboring"
+    "📄 Iltimos, hujjatlaringizni PDF formatda yuboring."
 )
 
 WELCOME_NAME_TEXT = (
@@ -74,6 +70,12 @@ MENU_ADMIN_CONTACT = "📞 Admin bilan bog‘lanish"
 
 NOT_PDF_TEXT = "❌ Iltimos, hujjatni faqat PDF formatda yuboring."
 START_TEXT_INSTEAD_OF_FILE = "📄 Iltimos, ro‘yxatdan o‘tish uchun hujjatlaringizni PDF formatda yuboring."
+ASK_ANOTHER_PDF_TEXT = "📎 Yana PDF hujjat yubormoqchimisiz?"
+SEND_ANOTHER_PDF_TEXT = "📄 Yana PDF faylni yuboring."
+ALL_PDFS_RECEIVED_TEXT = "✅ Barcha hujjatlar qabul qilindi."
+YES_BUTTON_TEXT = "✅ Ha"
+NO_BUTTON_TEXT = "❌ Yo‘q"
+PDF_ONLY_ERROR_TEXT = "❌ Iltimos, faqat PDF formatdagi fayl yuboring."
 ALREADY_SUBMITTED_TEXT = (
     "ℹ️ Siz allaqachon hujjat yuborgansiz.\n\n"
     "Keyingi bosqich — to‘lovni amalga oshirish."
@@ -156,6 +158,11 @@ def phone_request_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
+def pdf_more_keyboard() -> ReplyKeyboardMarkup:
+    keyboard = [[KeyboardButton(YES_BUTTON_TEXT), KeyboardButton(NO_BUTTON_TEXT)]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+
 def approval_button(user_id: int, stage: str) -> InlineKeyboardMarkup:
     keyboard = [[
         InlineKeyboardButton("✅ Tasdiqlandi", callback_data=f"approve:{stage}:{user_id}"),
@@ -200,9 +207,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await update.effective_message.reply_text(ALREADY_SUBMITTED_TEXT, reply_markup=main_menu_keyboard())
         return WAITING_PAYMENT
 
+    if user_data.get("awaiting_pdf_more"):
+        await update.effective_message.reply_text(ASK_ANOTHER_PDF_TEXT, reply_markup=pdf_more_keyboard())
+        return WAITING_PDF_CONFIRM
+
     user_data["submitted_pdf"] = False
     user_data["awaiting_payment"] = False
     user_data["payment_submitted"] = False
+    user_data["awaiting_pdf_more"] = False
+    user_data["uploaded_pdfs"] = []
 
     if not user_data.get("applicant_name") or not user_data.get("phone_number"):
         await update.effective_message.reply_text(WELCOME_NAME_TEXT)
@@ -276,17 +289,20 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     ))
 
     if not is_pdf:
-        await message.reply_text(NOT_PDF_TEXT)
+        await message.reply_text(PDF_ONLY_ERROR_TEXT)
         return WAITING_PDF
 
     applicant = context.user_data.get("applicant_name") or user_mention_text(user)
     phone_number = context.user_data.get("phone_number", "Noma’lum")
+    uploaded_pdfs = user_data.setdefault("uploaded_pdfs", [])
+    uploaded_pdfs.append(document.file_id)
+    pdf_index = len(uploaded_pdfs)
     caption = (
         "📥 Yangi ro‘yxatdan o‘tish arizasi\n\n"
         f"👤 Foydalanuvchi: {applicant}\n"
         f"📱 Telefon: {phone_number}\n"
         f"🆔 ID: {user.id}\n\n"
-        "📄 Hujjat biriktirildi"
+        f"📄 Hujjat #{pdf_index} biriktirildi"
     )
 
     target = admin_target_kwargs()
@@ -317,18 +333,14 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await message.reply_text(ADMIN_FORWARD_ERROR_TEXT)
             return WAITING_PDF
 
-    user_data["submitted_pdf"] = True
-    user_data["awaiting_payment"] = True
+    user_data["awaiting_pdf_more"] = True
 
-    await message.reply_text(CONFIRMATION_TEXT, reply_markup=main_menu_keyboard())
-    await message.reply_text(PAYMENT_TEXT, reply_markup=main_menu_keyboard())
-
-    schedule_payment_reminder(update, context)
-    return WAITING_PAYMENT
+    await message.reply_text(ASK_ANOTHER_PDF_TEXT, reply_markup=pdf_more_keyboard())
+    return WAITING_PDF_CONFIRM
 
 
 async def handle_text_before_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.effective_message.reply_text(START_TEXT_INSTEAD_OF_FILE, reply_markup=main_menu_keyboard())
+    await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
     return WAITING_PDF
 
 
@@ -345,9 +357,39 @@ async def handle_new_application_menu(update: Update, context: ContextTypes.DEFA
     user_data["awaiting_payment"] = False
     user_data["payment_submitted"] = False
     user_data["last_registration_approved"] = False
+    user_data["awaiting_pdf_more"] = False
+    user_data["uploaded_pdfs"] = []
 
     await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
     return WAITING_PDF
+
+
+async def handle_pdf_more_yes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.effective_message.reply_text(SEND_ANOTHER_PDF_TEXT, reply_markup=main_menu_keyboard())
+    return WAITING_PDF
+
+
+async def handle_pdf_more_no(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_data = context.user_data
+    if not user_data.get("uploaded_pdfs"):
+        await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
+        return WAITING_PDF
+
+    user_data["submitted_pdf"] = True
+    user_data["awaiting_payment"] = True
+    user_data["awaiting_pdf_more"] = False
+
+    await update.effective_message.reply_text(ALL_PDFS_RECEIVED_TEXT, reply_markup=main_menu_keyboard())
+    await update.effective_message.reply_text(CONFIRMATION_TEXT, reply_markup=main_menu_keyboard())
+    await update.effective_message.reply_text(PAYMENT_TEXT, reply_markup=main_menu_keyboard())
+
+    schedule_payment_reminder(update, context)
+    return WAITING_PAYMENT
+
+
+async def handle_pdf_more_invalid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.effective_message.reply_text(ASK_ANOTHER_PDF_TEXT, reply_markup=pdf_more_keyboard())
+    return WAITING_PDF_CONFIRM
 
 
 async def handle_send_pdf_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -584,6 +626,13 @@ def build_app() -> Application:
                 MessageHandler(filters.Regex(r"^📞 Admin bilan bog‘lanish$"), handle_admin_contact_menu),
                 MessageHandler(filters.Document.ALL, handle_pdf),
                 MessageHandler((filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.VIDEO) & ~filters.COMMAND, handle_text_before_pdf),
+            ],
+            WAITING_PDF_CONFIRM: [
+                MessageHandler(filters.Regex(r"^📌 Yangi ariza$"), handle_new_application_menu),
+                MessageHandler(filters.Regex(r"^📞 Admin bilan bog‘lanish$"), handle_admin_contact_menu),
+                MessageHandler(filters.Regex(r"^✅ Ha$"), handle_pdf_more_yes),
+                MessageHandler(filters.Regex(r"^❌ Yo‘q$"), handle_pdf_more_no),
+                MessageHandler(filters.ALL & ~filters.COMMAND, handle_pdf_more_invalid),
             ],
             WAITING_PAYMENT: [
                 MessageHandler(filters.Regex(r"^📌 Yangi ariza$"), handle_new_application_menu),
