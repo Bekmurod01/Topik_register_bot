@@ -213,8 +213,8 @@ COMPUTER_PAYMENT_INFO_TEXT = (
     "Mamataliyev Bekmurod\n\n"
     "💰 To‘lov miqdori:\n"
     "• Koreys tili imtihoni (kompyuterda): 400 000 so‘m\n"
-    "• Xizmat narxi: 100 000 so‘m\n\n"
-    "Jami: 500 000 so‘m\n\n"
+    "• Xizmat narxi: 120 000 so‘m\n\n"
+    "Jami: 520 000 so‘m\n\n"
     "📌 To‘lovni amalga oshirgandan so‘ng, iltimos, to‘lov chekini (skrinshot) shu yerga yuboring."
 )
 
