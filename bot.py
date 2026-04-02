@@ -103,11 +103,7 @@ LOCATION_INVALID_TEXT = "📍 Iltimos, manzilingizni matn ko'rinishida kiriting.
 PHONE_REQUEST_TEXT = "📲 Telefon raqamingizni tugma orqali yuboring."
 PHONE_OWN_CONTACT_TEXT = "❗ Iltimos, faqat o'zingizning telefon raqamingizni yuboring."
 
-ASK_EXAM_TYPE_TEXT = (
-    "📝 Imtihon turini tanlang:\n\n"
-    "📝 Qog‘oz shaklida (Paper-based)\n"
-    "💻 Kompyuterda (Computer-based)"
-)
+ASK_EXAM_TYPE_TEXT = "📝 Imtihon turini tanlang:"
 EXAM_TYPE_PAPER_TEXT = "📝 Qog‘oz shaklida (Paper-based)"
 EXAM_TYPE_COMPUTER_TEXT = "💻 Kompyuterda (Computer-based)"
 
@@ -645,7 +641,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if user_data.get("exam_type") not in {"paper", "computer"}:
         user_data["inFlow"] = True
-        await update.effective_message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=ReplyKeyboardRemove())
+        await update.effective_message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=exam_type_keyboard())
         set_user_state(context, "waiting_exam_type")
         return WAITING_EXAM_TYPE
 
@@ -707,7 +703,7 @@ async def handle_phone_contact(update: Update, context: ContextTypes.DEFAULT_TYP
 
     context.user_data["phone_number"] = contact.phone_number
     await message.reply_text(PROFILE_SAVED_TEXT)
-    await message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=ReplyKeyboardRemove())
+    await message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=exam_type_keyboard())
     set_user_state(context, "waiting_exam_type")
     return WAITING_EXAM_TYPE
 
@@ -724,7 +720,7 @@ async def handle_exam_type_selection(update: Update, context: ContextTypes.DEFAU
     elif text == EXAM_TYPE_COMPUTER_TEXT:
         user_data["exam_type"] = "computer"
     else:
-        await update.effective_message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=ReplyKeyboardRemove())
+        await update.effective_message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=exam_type_keyboard())
         return WAITING_EXAM_TYPE
 
     user_data["awaiting_manual_receipt"] = False
@@ -925,7 +921,7 @@ async def handle_payment_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         return WAITING_PDF
 
     if user_data.get("exam_type") not in {"paper", "computer"}:
-        await update.effective_message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=ReplyKeyboardRemove())
+        await update.effective_message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=exam_type_keyboard())
         return WAITING_EXAM_TYPE
 
     if user_data.get("payment_verified"):
