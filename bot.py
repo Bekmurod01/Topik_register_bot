@@ -54,6 +54,7 @@ WAITING_NAME, WAITING_LOCATION, WAITING_PHONE, WAITING_EXAM_TYPE = 0, 1, 2, 3
 WAITING_PDF, WAITING_PDF_CONFIRM = 4, 5
 WAITING_PAYMENT_METHOD, WAITING_PAYMENT_VERIFICATION = 6, 7
 WAITING_OPTIONAL_SCREENSHOT = 8
+ADMIN_MENU = 9
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -340,6 +341,28 @@ def update_application_status(context: ContextTypes.DEFAULT_TYPE, application_id
             return
 
 
+def reset_user_flow_state(user_data: dict[str, Any]) -> None:
+    user_data["submitted_pdf"] = False
+    user_data["awaiting_payment"] = False
+    user_data["payment_verified"] = False
+    user_data["awaiting_pdf_more"] = False
+    user_data["uploaded_pdfs"] = []
+    user_data["applicant_name"] = ""
+    user_data["user_location"] = ""
+    user_data["phone_number"] = ""
+    user_data["exam_type"] = ""
+    user_data["awaiting_manual_receipt"] = False
+
+
+def in_admin_menu_state(context: ContextTypes.DEFAULT_TYPE) -> bool:
+    return context.user_data.get("admin_state") == "admin_menu"
+
+
+def should_block_user_flow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    user = update.effective_user
+    return bool(user and is_admin_user(user.id) and in_admin_menu_state(context))
+
+
 # ============================================================================
 # PAYMENT INTEGRATION - CLICK & PAYME
 # ============================================================================
@@ -525,6 +548,9 @@ async def validate_admin_target(context: ContextTypes.DEFAULT_TYPE) -> None:
 # ============================================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     user_data = context.user_data
 
     if user_data.get("last_registration_approved"):
@@ -584,6 +610,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     message = update.effective_message
     if not message.text:
         await message.reply_text(NAME_INVALID_TEXT)
@@ -595,6 +624,9 @@ async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def handle_location_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     message = update.effective_message
     if not message.text:
         await message.reply_text(LOCATION_INVALID_TEXT)
@@ -606,6 +638,9 @@ async def handle_location_input(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def handle_phone_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     message = update.effective_message
     contact = message.contact
     user = update.effective_user
@@ -625,6 +660,9 @@ async def handle_phone_contact(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def handle_exam_type_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     text = (update.effective_message.text or "").strip()
     user_data = context.user_data
 
@@ -648,16 +686,25 @@ async def handle_exam_type_selection(update: Update, context: ContextTypes.DEFAU
 
 
 async def handle_waiting_name_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     await update.effective_message.reply_text(NAME_INVALID_TEXT)
     return WAITING_NAME
 
 
 async def handle_waiting_location_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     await update.effective_message.reply_text(LOCATION_INVALID_TEXT)
     return WAITING_LOCATION
 
 
 async def handle_waiting_phone_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     await update.effective_message.reply_text(PHONE_REQUEST_TEXT, reply_markup=phone_request_keyboard())
     return WAITING_PHONE
 
@@ -668,6 +715,9 @@ async def chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     message = update.effective_message
     user = update.effective_user
     user_data = context.user_data
@@ -695,11 +745,17 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def handle_text_before_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
     return WAITING_PDF
 
 
 async def handle_admin_contact_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     await update.effective_message.reply_text(ADMIN_CONTACT_TEXT, reply_markup=main_menu_keyboard())
     if context.user_data.get("awaiting_manual_receipt"):
         return WAITING_OPTIONAL_SCREENSHOT
@@ -709,17 +765,11 @@ async def handle_admin_contact_menu(update: Update, context: ContextTypes.DEFAUL
 
 
 async def handle_new_application_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     user_data = context.user_data
-    user_data["submitted_pdf"] = False
-    user_data["awaiting_payment"] = False
-    user_data["payment_verified"] = False
-    user_data["awaiting_pdf_more"] = False
-    user_data["uploaded_pdfs"] = []
-    user_data["applicant_name"] = ""
-    user_data["user_location"] = ""
-    user_data["phone_number"] = ""
-    user_data["exam_type"] = ""
-    user_data["awaiting_manual_receipt"] = False
+    reset_user_flow_state(user_data)
 
     await update.effective_message.reply_text(WELCOME_TEXT)
     await update.effective_message.reply_text(ASK_NAME_TEXT)
@@ -727,11 +777,17 @@ async def handle_new_application_menu(update: Update, context: ContextTypes.DEFA
 
 
 async def handle_pdf_more_yes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     await update.effective_message.reply_text(SEND_ANOTHER_PDF_TEXT, reply_markup=main_menu_keyboard())
     return WAITING_PDF
 
 
 async def handle_pdf_more_no(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     user_data = context.user_data
     if not user_data.get("uploaded_pdfs"):
         await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
@@ -750,11 +806,17 @@ async def handle_pdf_more_no(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def handle_pdf_more_invalid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     await update.effective_message.reply_text(ASK_ANOTHER_PDF_TEXT, reply_markup=pdf_more_keyboard())
     return WAITING_PDF_CONFIRM
 
 
 async def handle_payment_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     user_data = context.user_data
 
     if not user_data.get("submitted_pdf"):
@@ -922,6 +984,9 @@ async def verify_payment_status(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_optional_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle optional screenshot after successful payment."""
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     message = update.effective_message
     user = update.effective_user
     user_data = context.user_data
@@ -1034,6 +1099,9 @@ async def handle_optional_screenshot(update: Update, context: ContextTypes.DEFAU
 
 async def handle_waiting_payment_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle text messages during payment wait."""
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     if update.effective_message.text == MENU_NEW_APPLICATION:
         return await handle_new_application_menu(update, context)
     elif update.effective_message.text == MENU_ADMIN_CONTACT:
@@ -1143,6 +1211,10 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.effective_message.reply_text(ADMIN_DENIED_TEXT)
         return
 
+    # Enter isolated admin flow mode and reset any active user registration state.
+    reset_user_flow_state(context.user_data)
+    context.user_data["admin_state"] = "admin_menu"
+
     await update.effective_message.reply_text("👨‍💼 Admin panel", reply_markup=admin_panel_keyboard())
 
 
@@ -1156,8 +1228,12 @@ async def admin_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await message.reply_text(ADMIN_DENIED_TEXT)
         return
 
+    if not in_admin_menu_state(context):
+        return
+
     text = message.text or ""
     if text == ADMIN_MENU_BACK:
+        context.user_data.pop("admin_state", None)
         await message.reply_text("Asosiy menyu", reply_markup=main_menu_keyboard())
         return
 
@@ -1218,6 +1294,11 @@ async def admin_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     )
 
         return
+
+
+async def handle_admin_menu_state(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await admin_menu_text(update, context)
+    return ADMIN_MENU
 
 
 def schedule_payment_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1314,10 +1395,14 @@ def build_app() -> Application:
                 MessageHandler(filters.ALL & ~filters.COMMAND, handle_waiting_payment_text),
             ],
             WAITING_OPTIONAL_SCREENSHOT: [
-                MessageHandler(filters.Regex(r"^❌ Yo'q$"), handle_optional_screenshot),
+                MessageHandler(filters.Regex(r"^✅ Yo‘q, davom etish$"), handle_optional_screenshot),
                 MessageHandler(filters.PHOTO, handle_optional_screenshot),
                 MessageHandler(filters.Document.IMAGE, handle_optional_screenshot),
                 MessageHandler(filters.ALL & ~filters.COMMAND, handle_optional_screenshot),
+            ],
+            ADMIN_MENU: [
+                MessageHandler(filters.Regex(r"^(📋 Arizalar|📊 Statistika|🔙 Orqaga)$") & ~filters.COMMAND, handle_admin_menu_state),
+                MessageHandler(filters.ALL & ~filters.COMMAND, handle_admin_menu_state),
             ],
         },
         fallbacks=[CommandHandler("start", start)],
