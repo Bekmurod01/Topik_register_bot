@@ -166,21 +166,22 @@ PAYMENT_FORWARD_ERROR_TEXT = (
 
 USER_PDF_APPROVED_TEXT = "✅ Hujjatingiz admin tomonidan tasdiqlandi."
 USER_PAYMENT_APPROVED_TEXT = (
-    "✅ To'lov admin tomonidan tasdiqlandi. "
-    "Ro'yxatdan o'tish muvaffaqiyatli yakunlandi."
+    "🎉 To‘lovingiz tasdiqlandi!\n\n"
+    "Siz muvaffaqiyatli ro‘yxatdan o‘tdingiz."
 )
 USER_PDF_REJECTED_TEXT = (
     "❌ Hujjatingiz admin tomonidan rad etildi. "
     "Iltimos, hujjatlaringizni to'g'rilab qayta yuboring."
 )
 USER_PAYMENT_REJECTED_TEXT = (
-    "❌ To'lov admin tomonidan rad etildi. "
-    "Iltimos, admin bilan bog'laning yoki qayta to'lov qiling."
+    "❌ To‘lov tasdiqlanmadi.\n\n"
+    "Iltimos, admin bilan bog‘laning."
 )
 
 FINAL_APPLICATION_RECEIVED_TEXT = (
-    "✅ Sizning arizangiz qabul qilindi!\n\n"
-    "Operatorlar tez orada siz bilan bog‘lanadi."
+    "✅ To‘lov skrinshoti qabul qilindi!\n\n"
+    "To‘lovingiz tekshirilmoqda. Tasdiqlangandan so‘ng sizga xabar beriladi.\n\n"
+    "🙏 Sabringiz uchun rahmat!"
 )
 
 ADMIN_CONTACT_TEXT = (
@@ -263,8 +264,8 @@ def screenshot_keyboard() -> ReplyKeyboardMarkup:
 
 def approval_button(user_id: int, stage: str) -> InlineKeyboardMarkup:
     keyboard = [[
-        InlineKeyboardButton("✅ Tasdiqlandi", callback_data=f"approve:{stage}:{user_id}"),
-        InlineKeyboardButton("❌ Rad etildi", callback_data=f"reject:{stage}:{user_id}"),
+        InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"approve:{stage}:{user_id}"),
+        InlineKeyboardButton("❌ Bekor qilish", callback_data=f"reject:{stage}:{user_id}"),
     ]]
     return InlineKeyboardMarkup(keyboard)
 
@@ -907,7 +908,7 @@ async def handle_optional_screenshot(update: Update, context: ContextTypes.DEFAU
     exam_type = selected_exam_type_label(user_data)
 
     admin_summary = (
-        "📥 Yangi to‘liq ro‘yxatdan o‘tish arizasi\n\n"
+        "📥 Yangi ro‘yxatdan o‘tish arizasi\n\n"
         f"👤 Ism: {applicant}\n"
         f"📱 Telefon: {phone_number}\n"
         f"📍 Manzil: {location}\n"
@@ -919,7 +920,11 @@ async def handle_optional_screenshot(update: Update, context: ContextTypes.DEFAU
     uploaded_pdfs = user_data.get("uploaded_pdfs", [])
 
     try:
-        await context.bot.send_message(text=admin_summary, **target)
+        await context.bot.send_message(
+            text=admin_summary,
+            reply_markup=approval_button(user.id, "payment"),
+            **target,
+        )
 
         for pdf_file_id in uploaded_pdfs:
             await context.bot.send_document(
@@ -947,11 +952,8 @@ async def handle_optional_screenshot(update: Update, context: ContextTypes.DEFAU
 
     user_data["awaiting_manual_receipt"] = False
     user_data["awaiting_payment"] = False
-    user_data["submitted_pdf"] = False
+    user_data["submitted_pdf"] = True
     user_data["payment_verified"] = False
-    user_data["uploaded_pdfs"] = []
-    user_data["last_registration_approved"] = True
-
     await message.reply_text(FINAL_APPLICATION_RECEIVED_TEXT, reply_markup=main_menu_keyboard())
     return WAITING_PAYMENT_METHOD
 
@@ -975,6 +977,30 @@ async def admin_decision_button(update: Update, context: ContextTypes.DEFAULT_TY
     if query is None or query.data is None:
         return
 
+    actor = query.from_user
+    if actor is None:
+        return
+
+    is_allowed = False
+    if ADMIN_USER_ID:
+        try:
+            is_allowed = actor.id == int(ADMIN_USER_ID)
+        except ValueError:
+            is_allowed = False
+
+    if not is_allowed:
+        try:
+            chat = query.message.chat if query.message else None
+            if chat is not None:
+                member = await context.bot.get_chat_member(chat.id, actor.id)
+                is_allowed = member.status in {"administrator", "creator"}
+        except TelegramError:
+            is_allowed = False
+
+    if not is_allowed:
+        await query.answer("Faqat admin bu tugmalardan foydalana oladi.", show_alert=True)
+        return
+
     parts = query.data.split(":")
     if len(parts) != 3:
         return
@@ -983,7 +1009,7 @@ async def admin_decision_button(update: Update, context: ContextTypes.DEFAULT_TY
     if action not in {"approve", "reject"}:
         return
 
-    await query.answer("Tasdiqlandi" if action == "approve" else "Rad etildi")
+    await query.answer("Tasdiqlandi" if action == "approve" else "Bekor qilindi")
 
     try:
         user_id = int(user_id_raw)
@@ -1002,6 +1028,7 @@ async def admin_decision_button(update: Update, context: ContextTypes.DEFAULT_TY
             target_user_data["submitted_pdf"] = False
             target_user_data["awaiting_payment"] = False
             target_user_data["payment_verified"] = False
+            target_user_data["uploaded_pdfs"] = []
             target_user_data["last_registration_approved"] = True
             notification_text = USER_PAYMENT_APPROVED_TEXT
     else:
