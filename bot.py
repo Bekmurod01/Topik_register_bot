@@ -50,10 +50,10 @@ PAYME_API_KEY = os.getenv("PAYME_API_KEY", "")
 PAYME_API_URL = "https://checkout.payme.uz/api"
 
 # Conversation States
-WAITING_NAME, WAITING_PHONE, WAITING_EXAM_TYPE = 0, 1, 2
-WAITING_PDF, WAITING_PDF_CONFIRM = 3, 4
-WAITING_PAYMENT_METHOD, WAITING_PAYMENT_VERIFICATION = 5, 6
-WAITING_OPTIONAL_SCREENSHOT = 7
+WAITING_NAME, WAITING_LOCATION, WAITING_PHONE, WAITING_EXAM_TYPE = 0, 1, 2, 3
+WAITING_PDF, WAITING_PDF_CONFIRM = 4, 5
+WAITING_PAYMENT_METHOD, WAITING_PAYMENT_VERIFICATION = 6, 7
+WAITING_OPTIONAL_SCREENSHOT = 8
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -82,12 +82,14 @@ WELCOME_NAME_TEXT = (
 )
 
 ASK_PHONE_TEXT = "📱 Iltimos, telefon raqamingizni yuboring"
+ASK_LOCATION_TEXT = "📍 Iltimos, qaysi shahar yoki viloyatdan ekanligingizni kiriting.\n\nMasalan: Toshkent shahri yoki Samarqand viloyati"
 PROFILE_SAVED_TEXT = (
     "✅ Ma'lumotlaringiz qabul qilindi!\n\n"
     "Endi ro'yxatdan o'tishni davom ettirishingiz mumkin."
 )
 
 NAME_INVALID_TEXT = "✍️ Iltimos, ismingizni matn ko'rinishida kiriting."
+LOCATION_INVALID_TEXT = "📍 Iltimos, manzilingizni matn ko'rinishida kiriting."
 PHONE_REQUEST_TEXT = "📲 Telefon raqamingizni tugma orqali yuboring."
 PHONE_OWN_CONTACT_TEXT = "❗ Iltimos, faqat o'zingizning telefon raqamingizni yuboring."
 
@@ -174,6 +176,11 @@ USER_PDF_REJECTED_TEXT = (
 USER_PAYMENT_REJECTED_TEXT = (
     "❌ To'lov admin tomonidan rad etildi. "
     "Iltimos, admin bilan bog'laning yoki qayta to'lov qiling."
+)
+
+FINAL_APPLICATION_RECEIVED_TEXT = (
+    "✅ Sizning arizangiz qabul qilindi!\n\n"
+    "Operatorlar tez orada siz bilan bog‘lanadi."
 )
 
 ADMIN_CONTACT_TEXT = (
@@ -499,9 +506,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.effective_message.reply_text(ASK_ANOTHER_PDF_TEXT, reply_markup=pdf_more_keyboard())
         return WAITING_PDF_CONFIRM
 
-    if not user_data.get("applicant_name") or not user_data.get("phone_number"):
+    if not user_data.get("applicant_name"):
         await update.effective_message.reply_text(WELCOME_NAME_TEXT)
         return WAITING_NAME
+
+    if not user_data.get("user_location"):
+        await update.effective_message.reply_text(ASK_LOCATION_TEXT)
+        return WAITING_LOCATION
+
+    if not user_data.get("phone_number"):
+        await update.effective_message.reply_text(ASK_PHONE_TEXT, reply_markup=phone_request_keyboard())
+        return WAITING_PHONE
 
     if user_data.get("exam_type") not in {"paper", "computer"}:
         await update.effective_message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=exam_type_keyboard())
@@ -518,6 +533,17 @@ async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return WAITING_NAME
 
     context.user_data["applicant_name"] = message.text.strip()
+    await message.reply_text(ASK_LOCATION_TEXT)
+    return WAITING_LOCATION
+
+
+async def handle_location_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    message = update.effective_message
+    if not message.text:
+        await message.reply_text(LOCATION_INVALID_TEXT)
+        return WAITING_LOCATION
+
+    context.user_data["user_location"] = message.text.strip()
     await message.reply_text(ASK_PHONE_TEXT, reply_markup=phone_request_keyboard())
     return WAITING_PHONE
 
@@ -569,6 +595,11 @@ async def handle_waiting_name_other(update: Update, context: ContextTypes.DEFAUL
     return WAITING_NAME
 
 
+async def handle_waiting_location_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.effective_message.reply_text(LOCATION_INVALID_TEXT)
+    return WAITING_LOCATION
+
+
 async def handle_waiting_phone_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.effective_message.reply_text(PHONE_REQUEST_TEXT, reply_markup=phone_request_keyboard())
     return WAITING_PHONE
@@ -598,48 +629,8 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await message.reply_text(PDF_ONLY_ERROR_TEXT)
         return WAITING_PDF
 
-    applicant = context.user_data.get("applicant_name") or user_mention_text(user)
-    phone_number = context.user_data.get("phone_number", "Noma'lum")
-    exam_type = selected_exam_type_label(user_data)
     uploaded_pdfs = user_data.setdefault("uploaded_pdfs", [])
     uploaded_pdfs.append(document.file_id)
-    pdf_index = len(uploaded_pdfs)
-    caption = (
-        "📥 Yangi ro'yxatdan o'tish arizasi\n\n"
-        f"👤 Foydalanuvchi: {applicant}\n"
-        f"📱 Telefon: {phone_number}\n"
-        f"🧾 Imtihon turi: {exam_type}\n"
-        f"🆔 ID: {user.id}\n\n"
-        f"📄 Hujjat #{pdf_index} biriktirildi"
-    )
-
-    target = admin_target_kwargs()
-    approval_markup = approval_button(user.id, "pdf")
-    try:
-        await context.bot.send_document(
-            document=document.file_id,
-            caption=caption,
-            reply_markup=approval_markup,
-            **target,
-        )
-    except TelegramError as e:
-        if "message_thread_id" in target:
-            logger.warning("Forward with thread failed, retrying without thread: %s", e)
-            try:
-                await context.bot.send_document(
-                    chat_id=ADMIN_GROUP_ID,
-                    document=document.file_id,
-                    caption=caption,
-                    reply_markup=approval_markup,
-                )
-            except TelegramError:
-                logger.exception("Failed to forward registration PDF to admin group")
-                await message.reply_text(ADMIN_FORWARD_ERROR_TEXT)
-                return WAITING_PDF
-        else:
-            logger.exception("Failed to forward registration PDF to admin group")
-            await message.reply_text(ADMIN_FORWARD_ERROR_TEXT)
-            return WAITING_PDF
 
     user_data["awaiting_pdf_more"] = True
     await message.reply_text(ASK_ANOTHER_PDF_TEXT, reply_markup=pdf_more_keyboard())
@@ -668,6 +659,7 @@ async def handle_new_application_menu(update: Update, context: ContextTypes.DEFA
     user_data["awaiting_pdf_more"] = False
     user_data["uploaded_pdfs"] = []
     user_data["applicant_name"] = ""
+    user_data["user_location"] = ""
     user_data["phone_number"] = ""
     user_data["exam_type"] = ""
     user_data["awaiting_manual_receipt"] = False
@@ -894,57 +886,74 @@ async def handle_optional_screenshot(update: Update, context: ContextTypes.DEFAU
         )
         return WAITING_PAYMENT_METHOD
 
-    applicant = user_data.get("applicant_name") or user_mention_text(user)
-    phone_number = user_data.get("phone_number", "Noma'lum")
-    exam_type = selected_exam_type_label(user_data)
-    caption = (
-        "📎 To'lov cheki qabul qilindi\n\n"
-        f"👤 Foydalanuvchi: {applicant}\n"
-        f"📱 Telefon: {phone_number}\n"
-        f"🧾 Imtihon turi: {exam_type}\n"
-        f"🆔 ID: {user.id}\n\n"
-        "📌 Foydalanuvchi tomonidan yuborilgan to'lov cheki"
-    )
-
-    target = admin_target_kwargs()
-    approval_markup = approval_button(user.id, "payment")
-
+    screenshot_kind = ""
+    screenshot_file_id = ""
     if message.photo:
-        try:
-            await context.bot.send_photo(
-                photo=message.photo[-1].file_id,
-                caption=caption,
-                reply_markup=approval_markup,
-                **target,
-            )
-            user_data["awaiting_manual_receipt"] = False
-            await message.reply_text(PAYMENT_UNDER_REVIEW_TEXT, reply_markup=main_menu_keyboard())
-            return WAITING_PAYMENT_METHOD
-        except TelegramError:
-            logger.exception("Failed to forward optional screenshot to admin group")
-            await message.reply_text(PAYMENT_FORWARD_ERROR_TEXT)
-            return WAITING_OPTIONAL_SCREENSHOT
+        screenshot_kind = "photo"
+        screenshot_file_id = message.photo[-1].file_id
     elif message.document and message.document.mime_type and message.document.mime_type.startswith("image/"):
-        try:
-            await context.bot.send_document(
-                document=message.document.file_id,
-                caption=caption,
-                reply_markup=approval_markup,
-                **target,
-            )
-            user_data["awaiting_manual_receipt"] = False
-            await message.reply_text(PAYMENT_UNDER_REVIEW_TEXT, reply_markup=main_menu_keyboard())
-            return WAITING_PAYMENT_METHOD
-        except TelegramError:
-            logger.exception("Failed to forward optional screenshot image to admin group")
-            await message.reply_text(PAYMENT_FORWARD_ERROR_TEXT)
-            return WAITING_OPTIONAL_SCREENSHOT
+        screenshot_kind = "document"
+        screenshot_file_id = message.document.file_id
     else:
         await message.reply_text(
             "📎 Iltimos, to'lov chekini rasm ko'rinishida yuboring.",
             reply_markup=main_menu_keyboard()
         )
         return WAITING_OPTIONAL_SCREENSHOT
+
+    applicant = user_data.get("applicant_name") or user_mention_text(user)
+    phone_number = user_data.get("phone_number", "Noma'lum")
+    location = user_data.get("user_location", "Noma'lum")
+    exam_type = selected_exam_type_label(user_data)
+
+    admin_summary = (
+        "📥 Yangi to‘liq ro‘yxatdan o‘tish arizasi\n\n"
+        f"👤 Ism: {applicant}\n"
+        f"📱 Telefon: {phone_number}\n"
+        f"📍 Manzil: {location}\n"
+        f"📝 Imtihon turi: {exam_type}\n\n"
+        "📎 Hujjatlar va to‘lov skrinshoti quyida yuborildi"
+    )
+
+    target = admin_target_kwargs()
+    uploaded_pdfs = user_data.get("uploaded_pdfs", [])
+
+    try:
+        await context.bot.send_message(text=admin_summary, **target)
+
+        for pdf_file_id in uploaded_pdfs:
+            await context.bot.send_document(
+                document=pdf_file_id,
+                caption="📄 Hujjat",
+                **target,
+            )
+
+        if screenshot_kind == "photo":
+            await context.bot.send_photo(
+                photo=screenshot_file_id,
+                caption="💳 To‘lov skrinshoti",
+                **target,
+            )
+        else:
+            await context.bot.send_document(
+                document=screenshot_file_id,
+                caption="💳 To‘lov skrinshoti",
+                **target,
+            )
+    except TelegramError:
+        logger.exception("Failed to send full application package to admin group")
+        await message.reply_text(PAYMENT_FORWARD_ERROR_TEXT)
+        return WAITING_OPTIONAL_SCREENSHOT
+
+    user_data["awaiting_manual_receipt"] = False
+    user_data["awaiting_payment"] = False
+    user_data["submitted_pdf"] = False
+    user_data["payment_verified"] = False
+    user_data["uploaded_pdfs"] = []
+    user_data["last_registration_approved"] = True
+
+    await message.reply_text(FINAL_APPLICATION_RECEIVED_TEXT, reply_markup=main_menu_keyboard())
+    return WAITING_PAYMENT_METHOD
 
 
 async def handle_waiting_payment_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1074,6 +1083,10 @@ def build_app() -> Application:
             WAITING_NAME: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name_input),
                 MessageHandler(filters.ALL & ~filters.COMMAND, handle_waiting_name_other),
+            ],
+            WAITING_LOCATION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_location_input),
+                MessageHandler(filters.ALL & ~filters.COMMAND, handle_waiting_location_other),
             ],
             WAITING_PHONE: [
                 MessageHandler(filters.CONTACT, handle_phone_contact),
