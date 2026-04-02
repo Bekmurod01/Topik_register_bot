@@ -218,7 +218,6 @@ COMPUTER_PAYMENT_INFO_TEXT = (
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(MENU_NEW_APPLICATION)],
-        [KeyboardButton(MENU_PAY)],
         [KeyboardButton(MENU_ADMIN_CONTACT)],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
