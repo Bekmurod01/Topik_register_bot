@@ -358,9 +358,24 @@ def in_admin_menu_state(context: ContextTypes.DEFAULT_TYPE) -> bool:
     return context.user_data.get("admin_state") == "admin_menu"
 
 
+def get_user_mode(context: ContextTypes.DEFAULT_TYPE) -> str:
+    return context.user_data.get("mode", "user")
+
+
+def set_user_mode(context: ContextTypes.DEFAULT_TYPE, mode: str) -> None:
+    context.user_data["mode"] = mode
+
+
+def set_user_state(context: ContextTypes.DEFAULT_TYPE, state: str) -> None:
+    context.user_data["state"] = state
+
+
+def clear_admin_state(context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data.pop("admin_state", None)
+
+
 def should_block_user_flow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    user = update.effective_user
-    return bool(user and is_admin_user(user.id) and in_admin_menu_state(context))
+    return get_user_mode(context) != "user"
 
 
 # ============================================================================
@@ -552,6 +567,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ADMIN_MENU
 
     user_data = context.user_data
+    set_user_mode(context, "user")
 
     if user_data.get("last_registration_approved"):
         user_data["submitted_pdf"] = False
@@ -591,21 +607,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not user_data.get("applicant_name"):
         await update.effective_message.reply_text(WELCOME_TEXT)
         await update.effective_message.reply_text(ASK_NAME_TEXT)
+        set_user_state(context, "waiting_name")
         return WAITING_NAME
 
     if not user_data.get("user_location"):
         await update.effective_message.reply_text(ASK_LOCATION_TEXT)
+        set_user_state(context, "waiting_location")
         return WAITING_LOCATION
 
     if not user_data.get("phone_number"):
         await update.effective_message.reply_text(ASK_PHONE_TEXT, reply_markup=phone_request_keyboard())
+        set_user_state(context, "waiting_phone")
         return WAITING_PHONE
 
     if user_data.get("exam_type") not in {"paper", "computer"}:
         await update.effective_message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=exam_type_keyboard())
+        set_user_state(context, "waiting_exam_type")
         return WAITING_EXAM_TYPE
 
     await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
+    set_user_state(context, "waiting_pdf")
     return WAITING_PDF
 
 
@@ -620,6 +641,7 @@ async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     context.user_data["applicant_name"] = message.text.strip()
     await message.reply_text(ASK_LOCATION_TEXT)
+    set_user_state(context, "waiting_location")
     return WAITING_LOCATION
 
 
@@ -634,6 +656,7 @@ async def handle_location_input(update: Update, context: ContextTypes.DEFAULT_TY
 
     context.user_data["user_location"] = message.text.strip()
     await message.reply_text(ASK_PHONE_TEXT, reply_markup=phone_request_keyboard())
+    set_user_state(context, "waiting_phone")
     return WAITING_PHONE
 
 
@@ -656,6 +679,7 @@ async def handle_phone_contact(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data["phone_number"] = contact.phone_number
     await message.reply_text(PROFILE_SAVED_TEXT)
     await message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=exam_type_keyboard())
+    set_user_state(context, "waiting_exam_type")
     return WAITING_EXAM_TYPE
 
 
@@ -682,6 +706,7 @@ async def handle_exam_type_selection(update: Update, context: ContextTypes.DEFAU
     user_data["payment_verified"] = False
 
     await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
+    set_user_state(context, "waiting_pdf")
     return WAITING_PDF
 
 
@@ -704,6 +729,9 @@ async def handle_waiting_location_other(update: Update, context: ContextTypes.DE
 async def handle_waiting_phone_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if should_block_user_flow(update, context):
         return ADMIN_MENU
+
+    if context.user_data.get("state") != "waiting_phone":
+        return WAITING_PHONE
 
     await update.effective_message.reply_text(PHONE_REQUEST_TEXT, reply_markup=phone_request_keyboard())
     return WAITING_PHONE
@@ -741,6 +769,7 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     user_data["awaiting_pdf_more"] = True
     await message.reply_text(ASK_ANOTHER_PDF_TEXT, reply_markup=pdf_more_keyboard())
+    set_user_state(context, "waiting_pdf")
     return WAITING_PDF_CONFIRM
 
 
@@ -773,6 +802,9 @@ async def handle_new_application_menu(update: Update, context: ContextTypes.DEFA
 
     await update.effective_message.reply_text(WELCOME_TEXT)
     await update.effective_message.reply_text(ASK_NAME_TEXT)
+    set_user_mode(context, "user")
+    clear_admin_state(context)
+    set_user_state(context, "waiting_name")
     return WAITING_NAME
 
 
@@ -781,6 +813,7 @@ async def handle_pdf_more_yes(update: Update, context: ContextTypes.DEFAULT_TYPE
         return ADMIN_MENU
 
     await update.effective_message.reply_text(SEND_ANOTHER_PDF_TEXT, reply_markup=main_menu_keyboard())
+    set_user_state(context, "waiting_pdf")
     return WAITING_PDF
 
 
@@ -802,6 +835,7 @@ async def handle_pdf_more_no(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.effective_message.reply_text(selected_exam_payment_text(user_data), reply_markup=main_menu_keyboard())
 
     schedule_payment_reminder(update, context)
+    set_user_state(context, "waiting_payment")
     return WAITING_OPTIONAL_SCREENSHOT
 
 
@@ -837,11 +871,15 @@ async def handle_payment_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_data["awaiting_manual_receipt"] = True
     user_data["awaiting_payment"] = True
     await update.effective_message.reply_text(selected_exam_payment_text(user_data), reply_markup=main_menu_keyboard())
+    set_user_state(context, "waiting_payment")
     return WAITING_OPTIONAL_SCREENSHOT
 
 
 async def handle_payment_method_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle payment method selection (Click or Payme)."""
+    if should_block_user_flow(update, context):
+        return ADMIN_MENU
+
     query = update.callback_query
     user = update.effective_user
     user_data = context.user_data
@@ -1094,6 +1132,7 @@ async def handle_optional_screenshot(update: Update, context: ContextTypes.DEFAU
     user_data["payment_verified"] = False
     user_data["last_application_id"] = application_id
     await message.reply_text(FINAL_APPLICATION_RECEIVED_TEXT, reply_markup=main_menu_keyboard())
+    set_user_state(context, "waiting_payment")
     return WAITING_PAYMENT_METHOD
 
 
@@ -1213,9 +1252,12 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     # Enter isolated admin flow mode and reset any active user registration state.
     reset_user_flow_state(context.user_data)
+    set_user_mode(context, "admin")
     context.user_data["admin_state"] = "admin_menu"
+    set_user_state(context, "admin_menu")
 
     await update.effective_message.reply_text("👨‍💼 Admin panel", reply_markup=admin_panel_keyboard())
+    return
 
 
 async def admin_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1233,7 +1275,9 @@ async def admin_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     text = message.text or ""
     if text == ADMIN_MENU_BACK:
-        context.user_data.pop("admin_state", None)
+        set_user_mode(context, "user")
+        clear_admin_state(context)
+        set_user_state(context, "")
         await message.reply_text("Asosiy menyu", reply_markup=main_menu_keyboard())
         return
 
@@ -1294,6 +1338,8 @@ async def admin_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     )
 
         return
+
+    return
 
 
 async def handle_admin_menu_state(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
