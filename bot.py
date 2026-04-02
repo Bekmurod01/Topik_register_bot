@@ -74,7 +74,7 @@ def user_mention_text(user: Any) -> str:
 # TEXT MESSAGES - UZBEK
 # ============================================================================
 
-STEP_1_TEXT = "📄 Iltimos, hujjatlaringizni PDF formatda yuboring."
+STEP_1_TEXT = "📄 Iltimos, ro'yxatdan o'tish uchun hujjatlaringizni PDF formatda yuboring."
 
 WELCOME_NAME_TEXT = (
     "Assalomu alaykum! 🇰🇷 TOPIK ro'yxatdan o'tish botiga xush kelibsiz.\n\n"
@@ -477,19 +477,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 "✅ To'lovingiz tekshirildi.\n\nRo'yxatdan o'tish davom etmoqda.",
                 reply_markup=main_menu_keyboard()
             )
-        else:
-            await update.effective_message.reply_text(ALREADY_SUBMITTED_TEXT, reply_markup=main_menu_keyboard())
+            return WAITING_PAYMENT_METHOD
+
+        if user_data.get("awaiting_manual_receipt"):
+            await update.effective_message.reply_text(
+                selected_exam_payment_text(user_data),
+                reply_markup=main_menu_keyboard(),
+            )
+            return WAITING_OPTIONAL_SCREENSHOT
+
+        await update.effective_message.reply_text(ALREADY_SUBMITTED_TEXT, reply_markup=main_menu_keyboard())
         return WAITING_PAYMENT_METHOD
+
+    if user_data.get("awaiting_manual_receipt") and user_data.get("exam_type") in {"paper", "computer"}:
+        await update.effective_message.reply_text(
+            selected_exam_payment_text(user_data),
+            reply_markup=main_menu_keyboard(),
+        )
+        return WAITING_OPTIONAL_SCREENSHOT
 
     if user_data.get("awaiting_pdf_more"):
         await update.effective_message.reply_text(ASK_ANOTHER_PDF_TEXT, reply_markup=pdf_more_keyboard())
         return WAITING_PDF_CONFIRM
-
-    user_data["submitted_pdf"] = False
-    user_data["awaiting_payment"] = False
-    user_data["payment_verified"] = False
-    user_data["awaiting_pdf_more"] = False
-    user_data["uploaded_pdfs"] = []
 
     if not user_data.get("applicant_name") or not user_data.get("phone_number"):
         await update.effective_message.reply_text(WELCOME_NAME_TEXT)
@@ -499,17 +508,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.effective_message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=exam_type_keyboard())
         return WAITING_EXAM_TYPE
 
-    if not user_data.get("payment_verified"):
-        user_data["awaiting_manual_receipt"] = True
-        user_data["awaiting_payment"] = True
-        await update.effective_message.reply_text(selected_exam_payment_text(user_data), reply_markup=main_menu_keyboard())
-        return WAITING_OPTIONAL_SCREENSHOT
-
-    await update.effective_message.reply_text(
-        "✅ To'lovingiz allaqachon qabul qilingan. Jarayon admin tekshiruv bosqichida.",
-        reply_markup=main_menu_keyboard(),
-    )
-    return WAITING_PAYMENT_METHOD
+    await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
+    return WAITING_PDF
 
 
 async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -554,12 +554,15 @@ async def handle_exam_type_selection(update: Update, context: ContextTypes.DEFAU
         await update.effective_message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=exam_type_keyboard())
         return WAITING_EXAM_TYPE
 
-    user_data["awaiting_manual_receipt"] = True
-    user_data["awaiting_payment"] = True
+    user_data["awaiting_manual_receipt"] = False
+    user_data["submitted_pdf"] = False
+    user_data["awaiting_pdf_more"] = False
+    user_data["uploaded_pdfs"] = []
+    user_data["awaiting_payment"] = False
     user_data["payment_verified"] = False
 
-    await update.effective_message.reply_text(selected_exam_payment_text(user_data), reply_markup=main_menu_keyboard())
-    return WAITING_OPTIONAL_SCREENSHOT
+    await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
+    return WAITING_PDF
 
 
 async def handle_waiting_name_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -688,12 +691,13 @@ async def handle_pdf_more_no(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_data["submitted_pdf"] = True
     user_data["awaiting_payment"] = True
     user_data["awaiting_pdf_more"] = False
+    user_data["awaiting_manual_receipt"] = True
 
     await update.effective_message.reply_text(ALL_PDFS_RECEIVED_TEXT, reply_markup=main_menu_keyboard())
-    await update.effective_message.reply_text(CONFIRMATION_TEXT, reply_markup=main_menu_keyboard())
+    await update.effective_message.reply_text(selected_exam_payment_text(user_data), reply_markup=main_menu_keyboard())
 
     schedule_payment_reminder(update, context)
-    return WAITING_PAYMENT_METHOD
+    return WAITING_OPTIONAL_SCREENSHOT
 
 
 async def handle_pdf_more_invalid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -703,6 +707,10 @@ async def handle_pdf_more_invalid(update: Update, context: ContextTypes.DEFAULT_
 
 async def handle_payment_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_data = context.user_data
+
+    if not user_data.get("submitted_pdf"):
+        await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=main_menu_keyboard())
+        return WAITING_PDF
 
     if user_data.get("exam_type") not in {"paper", "computer"}:
         await update.effective_message.reply_text(ASK_EXAM_TYPE_TEXT, reply_markup=exam_type_keyboard())
