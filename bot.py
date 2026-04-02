@@ -99,6 +99,7 @@ PROFILE_SAVED_TEXT = (
 )
 
 NAME_INVALID_TEXT = "✍️ Iltimos, ismingizni matn ko'rinishida kiriting."
+NAME_RETRY_TEXT = "❌ Iltimos, ismingizni to‘g‘ri kiriting"
 LOCATION_INVALID_TEXT = "📍 Iltimos, manzilingizni matn ko'rinishida kiriting."
 PHONE_REQUEST_TEXT = "📲 Telefon raqamingizni tugma orqali yuboring."
 PHONE_OWN_CONTACT_TEXT = "❗ Iltimos, faqat o'zingizning telefon raqamingizni yuboring."
@@ -393,6 +394,73 @@ def should_block_user_flow(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return get_user_mode(context) != "user"
 
 
+def current_waiting_state(context: ContextTypes.DEFAULT_TYPE, fallback_state: int) -> int:
+    state_name = context.user_data.get("state")
+    state_map = {
+        "waiting_name": WAITING_NAME,
+        "waiting_location": WAITING_LOCATION,
+        "waiting_phone": WAITING_PHONE,
+        "waiting_exam_type": WAITING_EXAM_TYPE,
+        "waiting_pdf": WAITING_PDF,
+        "waiting_payment": WAITING_OPTIONAL_SCREENSHOT,
+    }
+    return state_map.get(state_name, fallback_state)
+
+
+def is_known_button_text(text: str) -> bool:
+    known_buttons = {
+        MENU_NEW_APPLICATION,
+        MENU_ADMIN_CONTACT,
+        MENU_PAY,
+        ADMIN_MENU_APPLICATIONS,
+        ADMIN_MENU_STATS,
+        ADMIN_MENU_BACK,
+        YES_BUTTON_TEXT,
+        NO_BUTTON_TEXT,
+        EXAM_TYPE_PAPER_TEXT,
+        EXAM_TYPE_COMPUTER_TEXT,
+        "📲 Raqamni yuborish",
+    }
+    return text in known_buttons
+
+
+def is_valid_name_input(name: str) -> bool:
+    candidate = name.strip()
+    if len(candidate) < 2:
+        return False
+
+    allowed_punctuation = {" ", "-", "'", "`", "’", "ʻ"}
+    if not any(ch.isalpha() for ch in candidate):
+        return False
+
+    return all(ch.isalpha() or ch in allowed_punctuation for ch in candidate)
+
+
+async def process_priority_button_text(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    fallback_state: int,
+) -> int | None:
+    message = update.effective_message
+    text = (message.text or "").strip() if message else ""
+    if not text or not is_known_button_text(text):
+        return None
+
+    # Always process global menu buttons first so they are never saved as user input.
+    if text == MENU_ADMIN_CONTACT:
+        return await handle_admin_contact_menu(update, context)
+    if text == MENU_NEW_APPLICATION:
+        return await handle_new_application_menu(update, context)
+    if text == MENU_PAY:
+        return await handle_payment_menu(update, context)
+
+    if text == "📲 Raqamni yuborish":
+        await message.reply_text(PHONE_REQUEST_TEXT, reply_markup=phone_request_keyboard())
+        return WAITING_PHONE
+
+    return fallback_state
+
+
 # ============================================================================
 # PAYMENT INTEGRATION - CLICK & PAYME
 # ============================================================================
@@ -659,12 +727,21 @@ async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if should_block_user_flow(update, context):
         return ADMIN_MENU
 
+    priority_result = await process_priority_button_text(update, context, WAITING_NAME)
+    if priority_result is not None:
+        return priority_result
+
     message = update.effective_message
     if not message.text:
         await message.reply_text(NAME_INVALID_TEXT)
         return WAITING_NAME
 
-    context.user_data["applicant_name"] = message.text.strip()
+    raw_name = message.text.strip()
+    if is_known_button_text(raw_name) or not is_valid_name_input(raw_name):
+        await message.reply_text(NAME_RETRY_TEXT)
+        return WAITING_NAME
+
+    context.user_data["applicant_name"] = raw_name
     await message.reply_text(ASK_LOCATION_TEXT)
     set_user_state(context, "waiting_location")
     return WAITING_LOCATION
@@ -674,9 +751,16 @@ async def handle_location_input(update: Update, context: ContextTypes.DEFAULT_TY
     if should_block_user_flow(update, context):
         return ADMIN_MENU
 
+    priority_result = await process_priority_button_text(update, context, WAITING_LOCATION)
+    if priority_result is not None:
+        return priority_result
+
     message = update.effective_message
     if not message.text:
         await message.reply_text(LOCATION_INVALID_TEXT)
+        return WAITING_LOCATION
+
+    if is_known_button_text(message.text.strip()):
         return WAITING_LOCATION
 
     context.user_data["user_location"] = message.text.strip()
@@ -758,6 +842,10 @@ async def handle_waiting_phone_other(update: Update, context: ContextTypes.DEFAU
     if should_block_user_flow(update, context):
         return ADMIN_MENU
 
+    priority_result = await process_priority_button_text(update, context, WAITING_PHONE)
+    if priority_result is not None:
+        return priority_result
+
     if context.user_data.get("state") != "waiting_phone":
         return WAITING_PHONE
 
@@ -816,15 +904,10 @@ async def handle_admin_contact_menu(update: Update, context: ContextTypes.DEFAUL
 
     if in_registration_flow(context):
         await update.effective_message.reply_text(
-            "⏳ Joriy ro'yxatdan o'tish jarayonini yakunlang.",
+            ADMIN_CONTACT_TEXT,
             reply_markup=ReplyKeyboardRemove(),
         )
-        state_name = context.user_data.get("state")
-        if state_name == "waiting_pdf":
-            return WAITING_PDF
-        if state_name == "waiting_payment":
-            return WAITING_OPTIONAL_SCREENSHOT
-        return WAITING_NAME
+        return current_waiting_state(context, WAITING_NAME)
 
     await update.effective_message.reply_text(ADMIN_CONTACT_TEXT, reply_markup=main_menu_if_not_in_flow(context))
     if context.user_data.get("awaiting_manual_receipt"):
