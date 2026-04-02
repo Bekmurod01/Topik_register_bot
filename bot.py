@@ -120,7 +120,7 @@ ALL_PDFS_RECEIVED_TEXT = "✅ Barcha hujjatlar qabul qilindi."
 YES_BUTTON_TEXT = "➕ Ha, yana yuboraman"
 NO_BUTTON_TEXT = "✅ Yo‘q, davom etish"
 PDF_ONLY_ERROR_TEXT = "❌ Iltimos, faqat PDF formatdagi fayl yuboring."
-PDF_REQUIRED_PROMPT_TEXT = "Iltimos, faqat PDF fayl yuboring 📄"
+PDF_REQUIRED_PROMPT_TEXT = "❌ Iltimos, PDF fayl yuboring"
 
 ALREADY_SUBMITTED_TEXT = (
     "ℹ️ Siz allaqachon hujjat yuborgansiz.\n\n"
@@ -659,6 +659,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         user_data["payment_verified"] = False
         user_data["last_registration_approved"] = False
 
+    if user_data.get("submitted_pdf") and not user_data.get("uploaded_pdfs"):
+        user_data["submitted_pdf"] = False
+        user_data["awaiting_payment"] = False
+        user_data["awaiting_manual_receipt"] = False
+        user_data["inFlow"] = True
+        await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=ReplyKeyboardRemove())
+        set_user_state(context, "waiting_pdf")
+        return WAITING_PDF
+
     if user_data.get("submitted_pdf"):
         if user_data.get("payment_verified"):
             await update.effective_message.reply_text(
@@ -688,6 +697,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.effective_message.reply_text(ASK_ANOTHER_PDF_TEXT, reply_markup=pdf_more_keyboard())
         return WAITING_PDF_CONFIRM
 
+    if user_data.get("exam_type") in {"paper", "computer"} and not user_data.get("submitted_pdf"):
+        user_data["inFlow"] = True
+        await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=ReplyKeyboardRemove())
+        set_user_state(context, "waiting_pdf")
+        return WAITING_PDF
+
     if not user_data.get("applicant_name"):
         user_data["inFlow"] = True
         await update.effective_message.reply_text(WELCOME_TEXT)
@@ -713,14 +728,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         set_user_state(context, "waiting_exam_type")
         return WAITING_EXAM_TYPE
 
-    user_data["awaiting_manual_receipt"] = True
-    user_data["awaiting_payment"] = True
-    user_data["submitted_pdf"] = True
-    user_data["payment_verified"] = False
     user_data["inFlow"] = True
-    await update.effective_message.reply_text(selected_exam_payment_text(user_data), reply_markup=ReplyKeyboardRemove())
-    set_user_state(context, "waiting_payment")
-    return WAITING_OPTIONAL_SCREENSHOT
+    await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=ReplyKeyboardRemove())
+    set_user_state(context, "waiting_pdf")
+    return WAITING_PDF
 
 
 async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -813,13 +824,11 @@ async def handle_exam_type_selection(update: Update, context: ContextTypes.DEFAU
     user_data["uploaded_pdfs"] = []
     user_data["awaiting_payment"] = False
     user_data["payment_verified"] = False
-    user_data["awaiting_manual_receipt"] = True
-    user_data["submitted_pdf"] = True
     user_data["inFlow"] = True
 
-    await update.effective_message.reply_text(selected_exam_payment_text(user_data), reply_markup=ReplyKeyboardRemove())
-    set_user_state(context, "waiting_payment")
-    return WAITING_OPTIONAL_SCREENSHOT
+    await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=ReplyKeyboardRemove())
+    set_user_state(context, "waiting_pdf")
+    return WAITING_PDF
 
 
 async def handle_waiting_name_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -885,7 +894,7 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_data["pdf_upload_state"] = PDF_FLOW_RECEIVED
 
     user_data["awaiting_pdf_more"] = True
-    await message.reply_text(ASK_ANOTHER_PDF_TEXT, reply_markup=ReplyKeyboardRemove())
+    await message.reply_text(ASK_ANOTHER_PDF_TEXT, reply_markup=pdf_more_keyboard())
     set_user_state(context, "waiting_pdf")
     return WAITING_PDF_CONFIRM
 
@@ -999,8 +1008,10 @@ async def handle_payment_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     user_data = context.user_data
 
-    if not user_data.get("submitted_pdf"):
+    if not user_data.get("uploaded_pdfs"):
+        user_data["submitted_pdf"] = False
         await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=ReplyKeyboardRemove())
+        set_user_state(context, "waiting_pdf")
         return WAITING_PDF
 
     if user_data.get("exam_type") not in {"paper", "computer"}:
@@ -1176,6 +1187,16 @@ async def handle_optional_screenshot(update: Update, context: ContextTypes.DEFAU
     user = update.effective_user
     user_data = context.user_data
 
+    # Debug-safety gate: never allow payment/screenshot flow without at least one PDF.
+    if not user_data.get("uploaded_pdfs"):
+        user_data["submitted_pdf"] = False
+        user_data["awaiting_manual_receipt"] = False
+        user_data["awaiting_payment"] = False
+        await message.reply_text(PDF_REQUIRED_PROMPT_TEXT, reply_markup=ReplyKeyboardRemove())
+        await message.reply_text(STEP_1_TEXT, reply_markup=ReplyKeyboardRemove())
+        set_user_state(context, "waiting_pdf")
+        return WAITING_PDF
+
     manual_receipt_mode = bool(user_data.get("awaiting_manual_receipt"))
 
     if not user_data.get("payment_verified") and not manual_receipt_mode:
@@ -1288,6 +1309,12 @@ async def handle_waiting_payment_text(update: Update, context: ContextTypes.DEFA
     """Handle text messages during payment wait."""
     if should_block_user_flow(update, context):
         return ADMIN_MENU
+
+    if not context.user_data.get("uploaded_pdfs"):
+        context.user_data["submitted_pdf"] = False
+        await update.effective_message.reply_text(STEP_1_TEXT, reply_markup=ReplyKeyboardRemove())
+        set_user_state(context, "waiting_pdf")
+        return WAITING_PDF
 
     if update.effective_message.text == MENU_NEW_APPLICATION:
         return await handle_new_application_menu(update, context)
