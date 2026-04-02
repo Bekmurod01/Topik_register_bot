@@ -74,15 +74,20 @@ def user_mention_text(user: Any) -> str:
 # TEXT MESSAGES - UZBEK
 # ============================================================================
 
-STEP_1_TEXT = "📄 Iltimos, ro'yxatdan o'tish uchun hujjatlaringizni PDF formatda yuboring."
+STEP_1_TEXT = "📄 Hujjatlaringizni PDF formatda yuboring\n\nBir nechta fayl yuborishingiz mumkin"
 
-WELCOME_NAME_TEXT = (
-    "Assalomu alaykum! 🇰🇷 TOPIK ro'yxatdan o'tish botiga xush kelibsiz.\n\n"
-    "Davom etish uchun, iltimos, ismingizni kiriting."
+WELCOME_TEXT = (
+    "🇰🇷 TOPIK ro‘yxatdan o‘tish botiga xush kelibsiz!\n\n"
+    "Ro‘yxatdan o‘tishni boshlaymiz 👇"
 )
+ASK_NAME_TEXT = "👤 Ismingizni kiriting:"
 
 ASK_PHONE_TEXT = "📱 Iltimos, telefon raqamingizni yuboring"
-ASK_LOCATION_TEXT = "📍 Iltimos, qaysi shahar yoki viloyatdan ekanligingizni kiriting.\n\nMasalan: Toshkent shahri yoki Samarqand viloyati"
+ASK_LOCATION_TEXT = (
+    "📍 Qayerdansiz?\n\n"
+    "Shahar yoki viloyatingizni yozing\n"
+    "(masalan: Toshkent shahri, Samarqand viloyati)"
+)
 PROFILE_SAVED_TEXT = (
     "✅ Ma'lumotlaringiz qabul qilindi!\n\n"
     "Endi ro'yxatdan o'tishni davom ettirishingiz mumkin."
@@ -93,9 +98,9 @@ LOCATION_INVALID_TEXT = "📍 Iltimos, manzilingizni matn ko'rinishida kiriting.
 PHONE_REQUEST_TEXT = "📲 Telefon raqamingizni tugma orqali yuboring."
 PHONE_OWN_CONTACT_TEXT = "❗ Iltimos, faqat o'zingizning telefon raqamingizni yuboring."
 
-ASK_EXAM_TYPE_TEXT = "🇰🇷 Qaysi turdagi TOPIK imtihonini tanlaysiz?"
-EXAM_TYPE_PAPER_TEXT = "📝 Paper-based (qog‘oz shaklida)"
-EXAM_TYPE_COMPUTER_TEXT = "💻 Computer-based (kompyuterda)"
+ASK_EXAM_TYPE_TEXT = "📝 Imtihon turini tanlang:"
+EXAM_TYPE_PAPER_TEXT = "📝 Qog‘oz shaklida (Paper-based)"
+EXAM_TYPE_COMPUTER_TEXT = "💻 Kompyuterda (Computer-based)"
 
 MENU_NEW_APPLICATION = "📌 Yangi ariza"
 MENU_ADMIN_CONTACT = "📞 Admin bilan bog'lanish"
@@ -103,11 +108,11 @@ MENU_PAY = "💳 To'lov qilish"
 
 NOT_PDF_TEXT = "❌ Iltimos, hujjatni faqat PDF formatda yuboring."
 START_TEXT_INSTEAD_OF_FILE = "📄 Iltimos, ro'yxatdan o'tish uchun hujjatlaringizni PDF formatda yuboring."
-ASK_ANOTHER_PDF_TEXT = "📎 Yana PDF hujjat yubormoqchimisiz?"
-SEND_ANOTHER_PDF_TEXT = "📄 Yana PDF faylni yuboring."
+ASK_ANOTHER_PDF_TEXT = "📎 Yana hujjat qo‘shmoqchimisiz?"
+SEND_ANOTHER_PDF_TEXT = "📄 Keyingi PDF hujjatni yuboring."
 ALL_PDFS_RECEIVED_TEXT = "✅ Barcha hujjatlar qabul qilindi."
-YES_BUTTON_TEXT = "✅ Ha"
-NO_BUTTON_TEXT = "❌ Yo'q"
+YES_BUTTON_TEXT = "➕ Ha, yana yuboraman"
+NO_BUTTON_TEXT = "✅ Yo‘q, davom etish"
 PDF_ONLY_ERROR_TEXT = "❌ Iltimos, faqat PDF formatdagi fayl yuboring."
 
 ALREADY_SUBMITTED_TEXT = (
@@ -173,10 +178,7 @@ USER_PDF_REJECTED_TEXT = (
     "❌ Hujjatingiz admin tomonidan rad etildi. "
     "Iltimos, hujjatlaringizni to'g'rilab qayta yuboring."
 )
-USER_PAYMENT_REJECTED_TEXT = (
-    "❌ To‘lov tasdiqlanmadi.\n\n"
-    "Iltimos, admin bilan bog‘laning."
-)
+USER_PAYMENT_REJECTED_TEXT = "❌ To‘lov tasdiqlanmadi\n\nIltimos, admin bilan bog‘laning"
 
 FINAL_APPLICATION_RECEIVED_TEXT = (
     "✅ To‘lov skrinshoti qabul qilindi!\n\n"
@@ -202,7 +204,7 @@ PAPER_PAYMENT_INFO_TEXT = (
     "• Koreys tili imtihoni (qog‘oz shaklida): 250 000 so‘m\n"
     "• Xizmat narxi: 120 000 so‘m\n\n"
     "Jami: 370 000 so‘m\n\n"
-    "📌 To‘lovni amalga oshirgandan so‘ng, iltimos, to‘lov chekini (skrinshot) shu yerga yuboring."
+    "📌 To‘lovdan so‘ng skrinshot yuboring"
 )
 
 COMPUTER_PAYMENT_INFO_TEXT = (
@@ -215,8 +217,13 @@ COMPUTER_PAYMENT_INFO_TEXT = (
     "• Koreys tili imtihoni (kompyuterda): 400 000 so‘m\n"
     "• Xizmat narxi: 120 000 so‘m\n\n"
     "Jami: 520 000 so‘m\n\n"
-    "📌 To‘lovni amalga oshirgandan so‘ng, iltimos, to‘lov chekini (skrinshot) shu yerga yuboring."
+    "📌 To‘lovdan so‘ng skrinshot yuboring"
 )
+
+ADMIN_MENU_APPLICATIONS = "📋 Arizalar"
+ADMIN_MENU_STATS = "📊 Statistika"
+ADMIN_MENU_BACK = "🔙 Orqaga"
+ADMIN_DENIED_TEXT = "⛔ Sizda ruxsat yo‘q"
 
 
 # ============================================================================
@@ -262,10 +269,21 @@ def screenshot_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
-def approval_button(user_id: int, stage: str) -> InlineKeyboardMarkup:
+def admin_panel_keyboard() -> ReplyKeyboardMarkup:
+    keyboard = [
+        [KeyboardButton(ADMIN_MENU_APPLICATIONS)],
+        [KeyboardButton(ADMIN_MENU_STATS)],
+        [KeyboardButton(ADMIN_MENU_BACK)],
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def approval_button(user_id: int, stage: str, application_id: str = "") -> InlineKeyboardMarkup:
+    approve_data = f"approve:{stage}:{user_id}:{application_id}" if application_id else f"approve:{stage}:{user_id}"
+    reject_data = f"reject:{stage}:{user_id}:{application_id}" if application_id else f"reject:{stage}:{user_id}"
     keyboard = [[
-        InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"approve:{stage}:{user_id}"),
-        InlineKeyboardButton("❌ Bekor qilish", callback_data=f"reject:{stage}:{user_id}"),
+        InlineKeyboardButton("✅ Tasdiqlash", callback_data=approve_data),
+        InlineKeyboardButton("❌ Bekor qilish", callback_data=reject_data),
     ]]
     return InlineKeyboardMarkup(keyboard)
 
@@ -283,6 +301,30 @@ def selected_exam_payment_text(user_data: dict[str, Any]) -> str:
     if user_data.get("exam_type") == "paper":
         return PAPER_PAYMENT_INFO_TEXT
     return COMPUTER_PAYMENT_INFO_TEXT
+
+
+def is_admin_user(user_id: int) -> bool:
+    if not ADMIN_USER_ID:
+        return False
+    try:
+        return user_id == int(ADMIN_USER_ID)
+    except ValueError:
+        return False
+
+
+def get_applications_store(context: ContextTypes.DEFAULT_TYPE) -> list[dict[str, Any]]:
+    apps = context.application.bot_data.get("applications")
+    if not isinstance(apps, list):
+        apps = []
+        context.application.bot_data["applications"] = apps
+    return apps
+
+
+def update_application_status(context: ContextTypes.DEFAULT_TYPE, application_id: str, new_status: str) -> None:
+    for app in get_applications_store(context):
+        if app.get("id") == application_id:
+            app["status"] = new_status
+            return
 
 
 # ============================================================================
@@ -508,7 +550,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return WAITING_PDF_CONFIRM
 
     if not user_data.get("applicant_name"):
-        await update.effective_message.reply_text(WELCOME_NAME_TEXT)
+        await update.effective_message.reply_text(WELCOME_TEXT)
+        await update.effective_message.reply_text(ASK_NAME_TEXT)
         return WAITING_NAME
 
     if not user_data.get("user_location"):
@@ -665,7 +708,8 @@ async def handle_new_application_menu(update: Update, context: ContextTypes.DEFA
     user_data["exam_type"] = ""
     user_data["awaiting_manual_receipt"] = False
 
-    await update.effective_message.reply_text(WELCOME_NAME_TEXT)
+    await update.effective_message.reply_text(WELCOME_TEXT)
+    await update.effective_message.reply_text(ASK_NAME_TEXT)
     return WAITING_NAME
 
 
@@ -913,18 +957,34 @@ async def handle_optional_screenshot(update: Update, context: ContextTypes.DEFAU
         f"📱 Telefon: {phone_number}\n"
         f"📍 Manzil: {location}\n"
         f"📝 Imtihon turi: {exam_type}\n\n"
-        "📎 Hujjatlar va to‘lov skrinshoti quyida yuborildi"
+        "📌 Holat: ⏳ Kutilmoqda"
     )
 
     target = admin_target_kwargs()
     uploaded_pdfs = user_data.get("uploaded_pdfs", [])
+    application_id = uuid.uuid4().hex[:8]
 
     try:
-        await context.bot.send_message(
+        summary_message = await context.bot.send_message(
             text=admin_summary,
-            reply_markup=approval_button(user.id, "payment"),
+            reply_markup=approval_button(user.id, "payment", application_id),
             **target,
         )
+
+        get_applications_store(context).append({
+            "id": application_id,
+            "user_id": user.id,
+            "name": applicant,
+            "phone": phone_number,
+            "location": location,
+            "exam_type": exam_type,
+            "pdfs": list(uploaded_pdfs),
+            "screenshot_type": screenshot_kind,
+            "screenshot_file_id": screenshot_file_id,
+            "status": "⏳ Kutilmoqda",
+            "summary_message_id": summary_message.message_id,
+            "created_at": datetime.now().isoformat(),
+        })
 
         for pdf_file_id in uploaded_pdfs:
             await context.bot.send_document(
@@ -954,6 +1014,7 @@ async def handle_optional_screenshot(update: Update, context: ContextTypes.DEFAU
     user_data["awaiting_payment"] = False
     user_data["submitted_pdf"] = True
     user_data["payment_verified"] = False
+    user_data["last_application_id"] = application_id
     await message.reply_text(FINAL_APPLICATION_RECEIVED_TEXT, reply_markup=main_menu_keyboard())
     return WAITING_PAYMENT_METHOD
 
@@ -981,31 +1042,18 @@ async def admin_decision_button(update: Update, context: ContextTypes.DEFAULT_TY
     if actor is None:
         return
 
-    is_allowed = False
-    if ADMIN_USER_ID:
-        try:
-            is_allowed = actor.id == int(ADMIN_USER_ID)
-        except ValueError:
-            is_allowed = False
-
-    if not is_allowed:
-        try:
-            chat = query.message.chat if query.message else None
-            if chat is not None:
-                member = await context.bot.get_chat_member(chat.id, actor.id)
-                is_allowed = member.status in {"administrator", "creator"}
-        except TelegramError:
-            is_allowed = False
+    is_allowed = is_admin_user(actor.id)
 
     if not is_allowed:
         await query.answer("Faqat admin bu tugmalardan foydalana oladi.", show_alert=True)
         return
 
     parts = query.data.split(":")
-    if len(parts) != 3:
+    if len(parts) not in {3, 4}:
         return
 
-    action, stage, user_id_raw = parts
+    action, stage, user_id_raw = parts[:3]
+    application_id = parts[3] if len(parts) == 4 else ""
     if action not in {"approve", "reject"}:
         return
 
@@ -1031,6 +1079,8 @@ async def admin_decision_button(update: Update, context: ContextTypes.DEFAULT_TY
             target_user_data["uploaded_pdfs"] = []
             target_user_data["last_registration_approved"] = True
             notification_text = USER_PAYMENT_APPROVED_TEXT
+            if application_id:
+                update_application_status(context, application_id, "✅ Tasdiqlandi")
     else:
         if stage == "pdf":
             target_user_data["submitted_pdf"] = False
@@ -1044,16 +1094,117 @@ async def admin_decision_button(update: Update, context: ContextTypes.DEFAULT_TY
             target_user_data["payment_verified"] = False
             target_user_data["last_registration_approved"] = False
             notification_text = USER_PAYMENT_REJECTED_TEXT
+            if application_id:
+                update_application_status(context, application_id, "❌ Bekor qilindi")
+
+    if query.message is not None and application_id:
+        try:
+            current_text = query.message.text or ""
+            if "📌 Holat:" in current_text:
+                base = current_text.split("📌 Holat:", 1)[0].rstrip()
+                status_value = "✅ Tasdiqlandi" if action == "approve" else "❌ Bekor qilindi"
+                await query.message.edit_text(
+                    f"{base}\n\n📌 Holat: {status_value}",
+                    reply_markup=None,
+                )
+            else:
+                await query.message.edit_reply_markup(reply_markup=None)
+        except TelegramError:
+            logger.exception("Failed to update admin summary status")
 
     try:
         await context.bot.send_message(chat_id=user_id, text=notification_text)
     except TelegramError:
         logger.exception("Failed to notify user about admin decision: action=%s stage=%s user_id=%s", action, stage, user_id)
 
-    try:
-        await query.message.edit_reply_markup(reply_markup=None)
-    except TelegramError:
-        logger.exception("Failed to clear admin decision buttons in admin group")
+    if query.message is not None and not application_id:
+        try:
+            await query.message.edit_reply_markup(reply_markup=None)
+        except TelegramError:
+            logger.exception("Failed to clear admin decision buttons in admin group")
+
+
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if user is None or not is_admin_user(user.id):
+        await update.effective_message.reply_text(ADMIN_DENIED_TEXT)
+        return
+
+    await update.effective_message.reply_text("👨‍💼 Admin panel", reply_markup=admin_panel_keyboard())
+
+
+async def admin_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    user = update.effective_user
+    if message is None or user is None:
+        return
+
+    if not is_admin_user(user.id):
+        await message.reply_text(ADMIN_DENIED_TEXT)
+        return
+
+    text = message.text or ""
+    if text == ADMIN_MENU_BACK:
+        await message.reply_text("Asosiy menyu", reply_markup=main_menu_keyboard())
+        return
+
+    if text == ADMIN_MENU_STATS:
+        apps = get_applications_store(context)
+        total = len(apps)
+        pending = sum(1 for a in apps if a.get("status") == "⏳ Kutilmoqda")
+        approved = sum(1 for a in apps if a.get("status") == "✅ Tasdiqlandi")
+        rejected = sum(1 for a in apps if a.get("status") == "❌ Bekor qilindi")
+        await message.reply_text(
+            "📊 Statistika\n\n"
+            f"Jami arizalar: {total}\n"
+            f"⏳ Kutilmoqda: {pending}\n"
+            f"✅ Tasdiqlandi: {approved}\n"
+            f"❌ Bekor qilindi: {rejected}",
+            reply_markup=admin_panel_keyboard(),
+        )
+        return
+
+    if text == ADMIN_MENU_APPLICATIONS:
+        apps = get_applications_store(context)
+        if not apps:
+            await message.reply_text("📭 Hozircha arizalar yo‘q.", reply_markup=admin_panel_keyboard())
+            return
+
+        target = admin_target_kwargs()
+        for app in reversed(apps[-20:]):
+            await message.reply_text(
+                "📥 Foydalanuvchi\n\n"
+                f"👤 {app.get('name', 'Noma\'lum')}\n"
+                f"📱 {app.get('phone', 'Noma\'lum')}\n"
+                f"📍 {app.get('location', 'Noma\'lum')}\n"
+                f"📝 {app.get('exam_type', 'Noma\'lum')}\n"
+                f"📌 Holat: {app.get('status', '⏳ Kutilmoqda')}",
+                reply_markup=admin_panel_keyboard(),
+            )
+
+            for pdf_file_id in app.get("pdfs", []):
+                await context.bot.send_document(
+                    document=pdf_file_id,
+                    caption="📄 Hujjat",
+                    chat_id=message.chat_id,
+                )
+
+            screenshot_id = app.get("screenshot_file_id")
+            if screenshot_id:
+                if app.get("screenshot_type") == "photo":
+                    await context.bot.send_photo(
+                        photo=screenshot_id,
+                        caption="💳 To‘lov skrinshoti",
+                        chat_id=message.chat_id,
+                    )
+                else:
+                    await context.bot.send_document(
+                        document=screenshot_id,
+                        caption="💳 To‘lov skrinshoti",
+                        chat_id=message.chat_id,
+                    )
+
+        return
 
 
 def schedule_payment_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1120,8 +1271,8 @@ def build_app() -> Application:
                 MessageHandler(filters.ALL & ~filters.COMMAND, handle_waiting_phone_other),
             ],
             WAITING_EXAM_TYPE: [
-                MessageHandler(filters.Regex(r"^📝 Paper-based \(qog‘oz shaklida\)$"), handle_exam_type_selection),
-                MessageHandler(filters.Regex(r"^💻 Computer-based \(kompyuterda\)$"), handle_exam_type_selection),
+                MessageHandler(filters.Regex(r"^📝 Qog‘oz shaklida \(Paper-based\)$"), handle_exam_type_selection),
+                MessageHandler(filters.Regex(r"^💻 Kompyuterda \(Computer-based\)$"), handle_exam_type_selection),
                 MessageHandler(filters.ALL & ~filters.COMMAND, handle_exam_type_selection),
             ],
             WAITING_PDF: [
@@ -1135,8 +1286,8 @@ def build_app() -> Application:
                 MessageHandler(filters.Regex(r"^📌 Yangi ariza$"), handle_new_application_menu),
                 MessageHandler(filters.Regex(r"^📞 Admin bilan bog'lanish$"), handle_admin_contact_menu),
                 MessageHandler(filters.Regex(r"^💳 To'lov qilish$"), handle_payment_menu),
-                MessageHandler(filters.Regex(r"^✅ Ha$"), handle_pdf_more_yes),
-                MessageHandler(filters.Regex(r"^❌ Yo'q$"), handle_pdf_more_no),
+                MessageHandler(filters.Regex(r"^➕ Ha, yana yuboraman$"), handle_pdf_more_yes),
+                MessageHandler(filters.Regex(r"^✅ Yo‘q, davom etish$"), handle_pdf_more_no),
                 MessageHandler(filters.ALL & ~filters.COMMAND, handle_pdf_more_invalid),
             ],
             WAITING_PAYMENT_METHOD: [
@@ -1161,6 +1312,14 @@ def build_app() -> Application:
         persistent=True,
     )
 
+    application.add_handler(CommandHandler("admin", admin_panel), group=-1)
+    application.add_handler(
+        MessageHandler(
+            filters.Regex(r"^(📋 Arizalar|📊 Statistika|🔙 Orqaga)$") & ~filters.COMMAND,
+            admin_menu_text,
+        ),
+        group=-1,
+    )
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("chatid", chat_id))
     application.add_handler(CallbackQueryHandler(admin_decision_button, pattern="^(approve|reject):"))
