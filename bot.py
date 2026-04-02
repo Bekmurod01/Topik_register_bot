@@ -312,6 +312,19 @@ def is_admin_user(user_id: int) -> bool:
         return False
 
 
+async def is_allowed_admin_actor(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> bool:
+    # Primary check: explicit admin user id from .env
+    if is_admin_user(user_id):
+        return True
+
+    # Fallback: allow actual admins/creator in configured admin group
+    try:
+        member = await context.bot.get_chat_member(ADMIN_GROUP_ID, user_id)
+        return member.status in {"administrator", "creator"}
+    except TelegramError:
+        return False
+
+
 def get_applications_store(context: ContextTypes.DEFAULT_TYPE) -> list[dict[str, Any]]:
     apps = context.application.bot_data.get("applications")
     if not isinstance(apps, list):
@@ -1042,7 +1055,7 @@ async def admin_decision_button(update: Update, context: ContextTypes.DEFAULT_TY
     if actor is None:
         return
 
-    is_allowed = is_admin_user(actor.id)
+    is_allowed = await is_allowed_admin_actor(context, actor.id)
 
     if not is_allowed:
         await query.answer("Faqat admin bu tugmalardan foydalana oladi.", show_alert=True)
@@ -1126,7 +1139,7 @@ async def admin_decision_button(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    if user is None or not is_admin_user(user.id):
+    if user is None or not await is_allowed_admin_actor(context, user.id):
         await update.effective_message.reply_text(ADMIN_DENIED_TEXT)
         return
 
@@ -1139,7 +1152,7 @@ async def admin_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if message is None or user is None:
         return
 
-    if not is_admin_user(user.id):
+    if not await is_allowed_admin_actor(context, user.id):
         await message.reply_text(ADMIN_DENIED_TEXT)
         return
 
